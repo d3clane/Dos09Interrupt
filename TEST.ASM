@@ -19,6 +19,8 @@ Cycle:
 	mov bx, 1111h
 	mov cx, 2222h
 	mov dx, 3333h
+	mov si, 4444h
+	mov di, 5555h
 	jmp Cycle
 
 CycleEnd:
