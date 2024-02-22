@@ -57,7 +57,7 @@ New09Interrupt   proc
         in al,  60h
         cmp al, 44h ; scancode of F10
         jne Old09Interrupt
-        
+
         pop ax
 
         ; previous program sp is sp + 6 (skip seg + ofs + flags) 
@@ -77,10 +77,10 @@ New09Interrupt   proc
 
         mov al, 20h     ; EOI
         out 20h, al
-        
+
         pop ax
         iret
-        
+
 Old09Interrupt:
         pop ax
 
@@ -103,7 +103,7 @@ New08Interrupt   proc
         push sp ax bx cx dx si di bp ds es ss
         call PrintFrameWithRegisters
         pop ss es ds bp di si dx cx bx ax sp
-        
+
 Old08Interrupt:
         db 0eah         ; jump far
         Old08Ofs dw 0
@@ -114,7 +114,9 @@ Old08Interrupt:
 
 ;------------------------------------------------
 ;Prints frame in the top left corner and registers in it
-;Entry: registers,
+;Entry: registers on stack, push order:
+;       push [flags cs ip] sp ax bx cx dx si di bp ds es ss [ret adr]
+;       also registers info [ax, ss] is saved in them
 ;       cs = [bp + 28],
 ;       ip = [bp + 26]
 ;Exit:  None
@@ -130,9 +132,9 @@ PrintFrameWithRegisters proc
         mov si, cs:FrameStyleOffset
         cld
         call PrintFrame
+
         pop ds es si di dx cx bx ax
         
-        ;TODO - stack pointer changing when pushing, push it first
         call PrintRegisters
 
         ret
@@ -142,6 +144,7 @@ PrintFrameWithRegisters proc
 ;------------------------------------------------
 ;Print registers
 ;Entry: Registers,
+;       push [flags cs ip] sp ax bx cx dx si di bp ds es ss [smth] [ret adr]
 ;       sp = [bp + 26] + 6,
 ;       cs = [bp + 30],
 ;       ip = [bp + 28], (using bp as in stack frame)
@@ -153,12 +156,10 @@ PrintRegisters proc
         mov bp, sp
 
         COLUMN_LEFT_SHIFT equ 4d
-        push es di
         mov di, 0b800h
         mov es, di
         mov di, 1 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
         
-        push bx
         mov es:[di], byte ptr 'a'
         add di, 2
         mov es:[di], byte ptr 'x'
@@ -166,7 +167,7 @@ PrintRegisters proc
         call PrintRegisterValue
         mov di, 2 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
 
-        pop ax          ; popping previous bx to ax
+        mov ax, [bp + 22d]          ; popping previous bx to ax
         mov es:[di], byte ptr 'b'
         add di, 2
         mov es:[di], byte ptr 'x'
@@ -198,7 +199,7 @@ PrintRegisters proc
         call PrintRegisterValue
         mov di, 6 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
 
-        pop ax          ; popping real di to ax
+        mov ax, [bp + 14d]       ; popping real di to ax
         mov es:[di], byte ptr 'd'
         add di, 2
         mov es:[di], byte ptr 'i'
@@ -231,7 +232,7 @@ PrintRegisters proc
         call PrintRegisterValue
         mov di, 0ah * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
 
-        pop ax          ; popping real es to ax
+        mov ax, [bp + 8]        ; popping real es to ax
         mov es:[di], byte ptr 'e'
         add di, 2
         mov es:[di], byte ptr 's'
