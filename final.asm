@@ -15,20 +15,32 @@ Start:  cld                         ; reading frame params from cmd
         call ReadFrameStyle
         mov FrameStyleOffset, dx
 
-        mov ax, 3509h       ; calculating old 09 int adr
+        mov ax, 3509h       ; saving old 09 int adr
         int 21h
         mov Old09Ofs, bx
         mov bx, es
         mov Old09Seg, bx
 
-        mov ax, 0           ; moving new 09 int adr into int's table
+        mov ax, 3508h       ; saving old 08 int adr   
+        int 21h
+        mov Old08Ofs, bx
+        mov bx, es
+        mov Old08Seg, bx
+
+        mov ax, 0           ; moving new 09 and 08 int's adr into int's table
         mov es, ax
+        mov ax, cs
         mov bx, 9 * 4
         cli
         mov es:[bx], offset New09Interrupt
-        mov ax, cs
+        mov es:[bx + 2], ax
+
+        sub bx, 4       ; bx = 8 * 4
+        mov es:[bx], offset New08Interrupt
         mov es:[bx + 2], ax
         sti
+
+        mov ax, 0
 
         mov ax, 3100h
         mov dx, offset EOP
@@ -36,13 +48,79 @@ Start:  cld                         ; reading frame params from cmd
         inc dx
         int 21h
 
+;------------------------------------------------
+;09 interruption 
+;------------------------------------------------
 New09Interrupt   proc
         push ax
 
         in al,  60h
         cmp al, 44h ; scancode of F10
         jne Old09Interrupt
+        
+        pop ax
 
+        ; previous program sp is sp + 6 (skip seg + ofs + flags) 
+
+        push sp ax bx cx dx si di bp ds es ss
+        call PrintFrameWithRegisters
+        pop ss es ds bp di si dx cx bx ax sp 
+
+        mov cs:FrameIsShown, 1
+        push ax 
+
+        in al, 61h      ; blink high bit in 61h port
+        or al, 80h
+        out 61h, al
+        and al, not 80h
+        out 61h, al
+
+        mov al, 20h     ; EOI
+        out 20h, al
+        
+        pop ax
+        iret
+        
+Old09Interrupt:
+        pop ax
+
+        db 0eah         ; jump far
+        Old09Ofs dw 0
+        Old09Seg dw 0
+
+        endp
+
+FrameIsShown db 0             ; bool variable - frame is shown or not
+
+
+;------------------------------------------------
+;08 interruption 
+;------------------------------------------------
+New08Interrupt   proc
+        cmp cs:FrameIsShown, 0
+        je Old08Interrupt
+
+        push sp ax bx cx dx si di bp ds es ss
+        call PrintFrameWithRegisters
+        pop ss es ds bp di si dx cx bx ax sp
+        
+Old08Interrupt:
+        db 0eah         ; jump far
+        Old08Ofs dw 0
+        Old08Seg dw 0
+
+        endp
+        
+
+;------------------------------------------------
+;Prints frame in the top left corner and registers in it
+;Entry: registers,
+;       cs = [bp + 28],
+;       ip = [bp + 26]
+;Exit:  None
+;Destr: All registers
+;------------------------------------------------
+PrintFrameWithRegisters proc
         push ax bx cx dx di si es ds
         mov ax, cs:FrameColor
         mov bx, cs:FrameWidth
@@ -54,35 +132,193 @@ New09Interrupt   proc
         call PrintFrame
         pop ds es si di dx cx bx ax
         
-        ;push es
-        ;push 0b800h
-        ;pop es
-        ;mov bx, (80 * 5 + 40) * 2
-        ;mov ah, 4eh
-        ;in al, 60h
-        ;mov es:[bx], ax
+        ;TODO - stack pointer changing when pushing, push it first
+        call PrintRegisters
 
-        in al, 61h      ; blink high bit in 61h port
-        or al, 80h
-        out 61h, al
-        and al, not 80h
-        out 61h, al
-
-        mov al, 20h     ; EOI
-        out 20h, al
-
-        pop ax
-        iret
-        
-Old09Interrupt:
-        pop ax
-
-        db 0eah         ; jump far
-        Old09Ofs dw 0
-        Old09Seg dw 0
-
-        iret
+        ret
         endp
+
+
+;------------------------------------------------
+;Print registers
+;Entry: Registers,
+;       sp = [bp + 26] + 6,
+;       cs = [bp + 30],
+;       ip = [bp + 28], (using bp as in stack frame)
+;Exit : None
+;Destr: all registers
+;------------------------------------------------   
+PrintRegisters proc
+        push bp
+        mov bp, sp
+
+        COLUMN_LEFT_SHIFT equ 4d
+        push es di
+        mov di, 0b800h
+        mov es, di
+        mov di, 1 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+        
+        push bx
+        mov es:[di], byte ptr 'a'
+        add di, 2
+        mov es:[di], byte ptr 'x'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 2 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+
+        pop ax          ; popping previous bx to ax
+        mov es:[di], byte ptr 'b'
+        add di, 2
+        mov es:[di], byte ptr 'x'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 3 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+
+        mov ax, cx
+        mov es:[di], byte ptr 'c'
+        add di, 2
+        mov es:[di], byte ptr 'x'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 4 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+
+        mov ax, dx
+        mov es:[di], byte ptr 'd'
+        add di, 2
+        mov es:[di], byte ptr 'x'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 5 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+
+        mov ax, si
+        mov es:[di], byte ptr 's'
+        add di, 2
+        mov es:[di], byte ptr 'i'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 6 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+
+        pop ax          ; popping real di to ax
+        mov es:[di], byte ptr 'd'
+        add di, 2
+        mov es:[di], byte ptr 'i'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 7 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+        
+        mov ax, [bp]        ; real bp
+        mov es:[di], byte ptr 'b'
+        add di, 2
+        mov es:[di], byte ptr 'p'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 8 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT  
+
+        mov ax, [bp + 26d]
+        add ax, 6
+        mov es:[di], byte ptr 's'
+        add di, 2
+        mov es:[di], byte ptr 'p'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 9 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
+
+        mov ax, ds
+        mov es:[di], byte ptr 'd'
+        add di, 2
+        mov es:[di], byte ptr 's'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 0ah * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+
+        pop ax          ; popping real es to ax
+        mov es:[di], byte ptr 'e'
+        add di, 2
+        mov es:[di], byte ptr 's'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 0bh * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
+
+        mov ax, ss
+        mov es:[di], byte ptr 's'
+        add di, 2
+        mov es:[di], byte ptr 's'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 0ch * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
+
+        mov ax, [bp + 30d]       ; previous cs 
+        mov es:[di], byte ptr 'c'
+        add di, 2
+        mov es:[di], byte ptr 's'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 0dh * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
+
+        mov ax, [bp + 28d]       ; previous ip 
+        mov es:[di], byte ptr 'i'
+        add di, 2
+        mov es:[di], byte ptr 'p'
+        add di, 4
+        call PrintRegisterValue
+        mov di, 0eh * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
+
+        pop bp
+        ret
+        endp
+     
+;------------------------------------------------
+;Print one hex digit
+;Entry: ax with only least 4 bits,
+;       es:di - ptr to print
+;Exit : es:di increases by 2
+;Destr: di
+;------------------------------------------------   
+PrintHexDigit proc
+        cmp ax, 0ah 
+        jb AxIsLess10
+        add ax, 'A' - 0ah       ; setting ax 'A' - 'F' ascii code
+        mov es:[di], al
+        add di, 2
+        ret
+AxIsLess10:
+        add ax, '0'             ; setting ax '0' - '9' ascii code
+        mov es:[di], al
+        add di, 2
+        ret
+        endp
+
+;------------------------------------------------
+;Print register value
+;Entry: ax
+;       es:di - ptr to print
+;Exit : None
+;Destr: di, bx
+;------------------------------------------------   
+PrintRegisterValue proc
+        mov bx, ax
+
+        shr ax, 12
+        call PrintHexDigit
+        mov ax, bx
+
+        shr ax, 8
+        and ax, 0Fh
+        call PrintHexDigit
+        mov ax, bx
+
+        shr ax, 4
+        and ax, 0Fh
+        call PrintHexDigit
+        mov ax, bx
+        
+        and ax, 0Fh
+        call PrintHexDigit
+        mov ax, bx
+
+        ret
+        endp
+
 
 ;------------------------------------------------
 ;Prints one line of the frame
@@ -95,7 +331,7 @@ Old09Interrupt:
 ;       es:di moves on (bx) bytes to the right
 ;Destr: cx, si, di
 ;------------------------------------------------   
-PrintLine proc
+PrintFrameLine proc
         lodsb   ; loading to al
         stosw   ; pushing left char
 
@@ -134,7 +370,7 @@ PrintFrame proc
         mov di, 0   ; left top corner is 0
 
         mov dx, cx
-        call PrintLine      ; prints top line
+        call PrintFrameLine      ; prints top line
         mov cx, dx
         
         sub di, bx  ; moving back to the beginning of the line
@@ -144,7 +380,7 @@ PrintFrame proc
         sub cx, 2 ; height
 InLoop: mov dx, cx
         push si
-        call PrintLine
+        call PrintFrameLine
         sub di, bx  ; moving back to the beginning of the line
         sub di, bx  ; twice because of NUMBER_OF_BYTES_PER_CHAR = 2
         add di, SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR ; next line
@@ -153,7 +389,7 @@ InLoop: mov dx, cx
         loop InLoop
 
         add si, 3   ; moving ds:si to the next 3 chars (bottom line)
-        call PrintLine
+        call PrintFrameLine
 
         pop ds es
 
