@@ -55,6 +55,7 @@ New09Interrupt   proc
         push ax
 
         in al,  60h
+        and al, not 80h 
         cmp al, 44h ; scancode of F10
         jne Old09Interrupt
 
@@ -155,114 +156,45 @@ PrintRegisters proc
         push bp
         mov bp, sp
 
+PrintRegisterName MACRO regFirstLetter, regSecondLetter, shift
+        mov di, shift * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+        mov es:[di], byte ptr regFirstLetter
+        add di, 2
+        mov es:[di], byte ptr regSecondLetter
+        add di, 4
+        endm
+
+PrintRegisterValFromReg MACRO regFirstLetter, regSecondLetter, shift, regName 
+        PrintRegisterName regFirstLetter, regSecondLetter, shift
+        mov ax, regName
+        call PrintRegisterValue
+        endm
+
+PrintRegisterValFromMem MACRO regFirstLetter, regSecondLetter, shift, memShift 
+        PrintRegisterName regFirstLetter, regSecondLetter, shift
+        mov ax, [bp + memShift]
+        call PrintRegisterValue
+        endm
+
         COLUMN_LEFT_SHIFT equ 4d
         mov di, 0b800h
         mov es, di
-        mov di, 1 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
-        
-        mov es:[di], byte ptr 'a'
-        add di, 2
-        mov es:[di], byte ptr 'x'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 2 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
 
-        mov ax, [bp + 22d]          ; popping previous bx to ax
-        mov es:[di], byte ptr 'b'
-        add di, 2
-        mov es:[di], byte ptr 'x'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 3 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
+        ;TODO - .TYPE 
 
-        mov ax, cx
-        mov es:[di], byte ptr 'c'
-        add di, 2
-        mov es:[di], byte ptr 'x'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 4 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
-
-        mov ax, dx
-        mov es:[di], byte ptr 'd'
-        add di, 2
-        mov es:[di], byte ptr 'x'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 5 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
-
-        mov ax, si
-        mov es:[di], byte ptr 's'
-        add di, 2
-        mov es:[di], byte ptr 'i'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 6 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
-
-        mov ax, [bp + 14d]       ; popping real di to ax
-        mov es:[di], byte ptr 'd'
-        add di, 2
-        mov es:[di], byte ptr 'i'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 7 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
-        
-        mov ax, [bp]        ; real bp
-        mov es:[di], byte ptr 'b'
-        add di, 2
-        mov es:[di], byte ptr 'p'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 8 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT  
-
-        mov ax, [bp + 26d]
-        add ax, 6
-        mov es:[di], byte ptr 's'
-        add di, 2
-        mov es:[di], byte ptr 'p'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 9 * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
-
-        mov ax, ds
-        mov es:[di], byte ptr 'd'
-        add di, 2
-        mov es:[di], byte ptr 's'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 0ah * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT
-
-        mov ax, [bp + 8]        ; popping real es to ax
-        mov es:[di], byte ptr 'e'
-        add di, 2
-        mov es:[di], byte ptr 's'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 0bh * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
-
-        mov ax, ss
-        mov es:[di], byte ptr 's'
-        add di, 2
-        mov es:[di], byte ptr 's'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 0ch * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
-
-        mov ax, [bp + 30d]       ; previous cs 
-        mov es:[di], byte ptr 'c'
-        add di, 2
-        mov es:[di], byte ptr 's'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 0dh * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
-
-        mov ax, [bp + 28d]       ; previous ip 
-        mov es:[di], byte ptr 'i'
-        add di, 2
-        mov es:[di], byte ptr 'p'
-        add di, 4
-        call PrintRegisterValue
-        mov di, 0eh * SCREEN_WIDTH * NUMBER_OF_BYTES_PER_CHAR + COLUMN_LEFT_SHIFT 
+        PrintRegisterValFromReg 'a', 'x', 1, ax
+        PrintRegisterValFromMem 'b', 'x', 2, 22d
+        PrintRegisterValFromReg 'c', 'x', 3, cx
+        PrintRegisterValFromReg 'd', 'x', 4, dx
+        PrintRegisterValFromReg 's', 'i', 5, si
+        PrintRegisterValFromMem 'd', 'i', 6, 14d
+        PrintRegisterValFromMem 'b', 'p', 7, 0
+        PrintRegisterValFromMem 's', 'p', 8, 26d
+        PrintRegisterValFromReg 'd', 's', 9, ds
+        PrintRegisterValFromMem 'e', 's', 0ah, 8d
+        PrintRegisterValFromReg 's', 's', 0bh, ss
+        PrintRegisterValFromMem 'c', 's', 0ch, 30d
+        PrintRegisterValFromMem 'i', 'p', 0dh, 28d
 
         pop bp
         ret
